@@ -843,7 +843,7 @@ function remount_remote_backup_location
 	mount -t nfs $remote_disk $backup_dir
 	sleep 15
 
-	if [[ ! -f $check_file ]] then
+	if [[ ! -f $check_file ]]; then
 		if [ $vm_log_enabled ]; then
 			log_message "ERROR: VM Backup failed due to missing check file: $check_file"
 		fi
@@ -853,7 +853,7 @@ function remount_remote_backup_location
 		echo "VM Backup failed due to not finding $check_file" >> $tmp_msg_file
 		echo "after mounting $remote_disk to $backup_dir" >> $tmp_msg_file
 		send_summary_email
-		exit(1)
+		exit 1
 	fi
 }
 
@@ -886,10 +886,10 @@ function delete_old_backup_files
 function begin_tmp_summary_msg
 {
 	[[ ! -d $tmp_msg_dir ]] && mkdir -p $tmp_msg_dir 
-  [[ ! -d $tmp_msg_dir ]] && 1>&2 echo "ERROR! $tmp_msg_dir does not exist and cannot be created!" && exit(1)
+  [[ ! -d $tmp_msg_dir ]] && 1>&2 echo "ERROR! $tmp_msg_dir does not exist and cannot be created!" && exit 1
   [[ -f $tmp_msg_file ]] && rm -f $tmp_msg_file
   cat $mail_header_file > $tmp_msg_file
-  [[ ! -f $tmp_msg_file ]] && 1>&2 echo "ERROR! $tmp_msg_file cannot be created!" && exit(1)
+  [[ ! -f $tmp_msg_file ]] && 1>&2 echo "ERROR! $tmp_msg_file cannot be created!" && exit 1 
 }
 
 
