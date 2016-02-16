@@ -6,7 +6,7 @@
 #
 # @version	2016.001
 # @created	2009-11-24
-# @lastupdated	2016-02-08
+# @lastupdated	2016-02-16
 #
 # @originalauthor	Andy Burton
 # @originalurl		http://www.andy-burton.co.uk/blog/
@@ -29,18 +29,24 @@ dir=`dirname $0`
 begin_tmp_summary_msg
 
 
+# Begin logging (make sure "begin_tmp_summary_msg" is called before this)
+log_enable
+
+
 # Verify good remote mount (don't fill up local drives! Fail if remote mount unavailable)
 remount_remote_backup_location
 
 
-# Pre-backup audit
-if [ $vm_log_enabled ]; then
-	log_message "Audit - store Hypervisor info & VM Metadata"
-fi
-
-
 # Pre-backup cleanup
 delete_old_backup_files
+
+
+# Backup the pool database/metadata
+backup_pool_database
+
+
+# Backup all Xen hosts in the pool
+backup_pool_hosts
 
 
 # Switch backup_vms to set the VM uuids we are backing up in vm_backup_list
@@ -62,7 +68,7 @@ case $backup_vms in
 
 	"list")
 		if [ $vm_log_enabled ]; then
-			log_message "Backup list VMs"
+			log_message "Backup list VMs (see vm_backup.cfg for list)"
 		fi
 		;;
 
