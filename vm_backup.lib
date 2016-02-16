@@ -6,7 +6,7 @@
 #
 # @version	2016.001
 # @created	2009-11-24
-# @lastupdated	2016-02-08
+# @lastupdated	2016-02-16
 #
 # @originalauthor	Andy Burton
 # @originalurl		http://www.andy-burton.co.uk/blog/
@@ -34,7 +34,6 @@ function log_enable
 {
 	vm_log_enabled=1
 	vm_log=()
-	log_message ""
 	log_message "Starting VM Backup"
 	log_message "------------------------------------------"
 }
@@ -65,6 +64,7 @@ function log_disable
 function log_message
 {
 	`echo "[$(date +%Y-%m-%d_%H-%M-%S)] $1" >>$log_path`
+	`echo "[$(date +%Y-%m-%d_%H-%M-%S)] $1" >>$tmp_msg_file`
 }
 
 
@@ -839,19 +839,21 @@ function remount_remote_backup_location
 		log_message "Remount remote backup location $remote_disk to $backup_dir"
 	fi
 
-	umount $backup_dir
+
+       	if [[ ! -d $backup_dir ]]; then
+		mkdir -p $backup_dir
+	        [[ ! -d $backup_dir ]] && 1>&2 echo "ERROR! $backup_dir does not exist and cannot be created!" && exit 1
+	else
+		umount $backup_dir
+	fi
 	mount -t nfs $remote_disk $backup_dir
-	sleep 15
+	#sleep 15
 
 	if [[ ! -f $check_file ]]; then
 		if [ $vm_log_enabled ]; then
 			log_message "ERROR: VM Backup failed due to missing check file: $check_file"
 		fi
 		1>&2 echo "ERROR: VM Backup failed due to missing check file: $check_file"
-		echo "Subject: VM_BACKUP: FAILED on remount" >> $tmp_msg_file
-		echo >> $tmp_msg_file
-		echo "VM Backup failed due to not finding $check_file" >> $tmp_msg_file
-		echo "after mounting $remote_disk to $backup_dir" >> $tmp_msg_file
 		send_summary_email
 		exit 1
 	fi
@@ -869,9 +871,10 @@ function remount_remote_backup_location
 function delete_old_backup_files
 {
 	if [ $vm_log_enabled ]; then
-		log_message "Deleting *$backup_ext files from $backup_dir $file_age days old"
+		log_message "Deleting *$backup_ext and *.bak files from $backup_dir $file_age days old"
 	fi
 	find $backup_dir*$backup_ext -type f -mtime $file_age -delete
+	find $backup_dir*.bak -type f -mtime $file_age -delete
 }
 
 
@@ -886,22 +889,68 @@ function delete_old_backup_files
 function begin_tmp_summary_msg
 {
 	[[ ! -d $tmp_msg_dir ]] && mkdir -p $tmp_msg_dir 
-  [[ ! -d $tmp_msg_dir ]] && 1>&2 echo "ERROR! $tmp_msg_dir does not exist and cannot be created!" && exit 1
-  [[ -f $tmp_msg_file ]] && rm -f $tmp_msg_file
-  cat $mail_header_file > $tmp_msg_file
-  [[ ! -f $tmp_msg_file ]] && 1>&2 echo "ERROR! $tmp_msg_file cannot be created!" && exit 1 
+	[[ ! -d $tmp_msg_dir ]] && 1>&2 echo "ERROR! $tmp_msg_dir does not exist and cannot be created!" && exit 1
+	[[ -f $tmp_msg_file ]] && rm -f $tmp_msg_file
+	# cat $mail_header_file > $tmp_msg_file
+	echo "To: $email_recipients" > $tmp_msg_file
+	echo "From: $email_from_address" >> $tmp_msg_file
+	echo -n "Subject: $email_subject" >> $tmp_msg_file
+	echo " - $(date +%Y-%m-%d)" >> $tmp_msg_file
+	echo >> $tmp_msg_file
+	[[ ! -f $tmp_msg_file ]] && 1>&2 echo "ERROR! $tmp_msg_file cannot be created!" && exit 1 
 }
 
 
 #
 # send_summary_email
-# Send the summary email to $mail_recipients
+# Send the summary email to $email_recipients
 # @use send_summary_email
 # @return void
 #
 
 function send_summary_email
 {
-	/usr/sbin/ssmtp $mail_recipients < $tmp_msg_file
-	[[ -f $tmp_msg_file ]] && rm -f $tmp_msg_file
+	[ $vm_log_enabled ] && log_message "Sending email summary to $email_recipients"
+	/usr/sbin/ssmtp $email_recipients < $tmp_msg_file
+
+	# For email message cleanup after the script runs,
+	# uncomment the following line. I leave it commented
+	# for easier diagnostics after something goes wrong.
+	# (This script deletes the temp message prior to 
+	# using it again, so no worries about perpetual growth.)
+
+	## [[ -f $tmp_msg_file ]] && rm -f $tmp_msg_file
+}
+
+function backup_pool_database
+{
+        [ $vm_log_enabled ] && log_message "Backing up pool database (pool metadata)"
+	pool_name=`xe pool-list|egrep name-label|sed -e "s/          name-label ( RW): //g"`
+	echo=`xe pool-dump-database file-name="$backup_dir.pool-DB.$pool_name.$date.bak" 2>>$log_path`
+
+	if [ $? -ne 0 ]; then
+		return 1
+	fi
+	
+	echo "$echo"
+	return 0
+
+}
+
+function backup_pool_hosts
+{
+	[ $vm_log_enabled ] && log_message "Backing up pool hosts (Xen hypervisors)"
+	# Put code here to get list of all hosts in pool, then back them up to $backup_dir
+	host_list=(`xe host-list|grep name-label|sed -e "s/          name-label ( RW): //g"`)
+	for onehost in "${host_list[@]}"
+	do
+		echo=`xe host-backup file-name="$backup_dir.host.$onehost.$date.bak" host="$onehost" 2>>$log_path`
+
+		if [ $? -ne 0 ]; then
+			return 1
+		fi
+	
+		echo "$echo"
+		return 0
+	done
 }
