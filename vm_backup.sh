@@ -6,7 +6,7 @@
 #
 # @version	2016.001
 # @created	2009-11-24
-# @lastupdated	2016-02-16
+# @lastupdated	2016-02-08
 #
 # @originalauthor	Andy Burton
 # @originalurl		http://www.andy-burton.co.uk/blog/

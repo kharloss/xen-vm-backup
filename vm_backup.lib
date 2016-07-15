@@ -6,7 +6,7 @@
 #
 # @version	2016.001
 # @created	2009-11-24
-# @lastupdated	2016-02-16
+# @lastupdated	2016-02-08
 #
 # @originalauthor	Andy Burton
 # @originalurl		http://www.andy-burton.co.uk/blog/
@@ -65,6 +65,9 @@ function log_message
 {
 	`echo "[$(date +%Y-%m-%d_%H-%M-%S)] $1" >>$log_path`
 	`echo "[$(date +%Y-%m-%d_%H-%M-%S)] $1" >>$tmp_msg_file`
+
+	# Append message to a secondary log file if $dual_log_file is set
+	[[ $dual_log_file ]] && `echo "[$(date +%Y-%m-%d_%H-%M-%S)] $1" >> $dual_log_file`
 }
 
 
@@ -258,6 +261,8 @@ function backup_vm
 	if [ $vm_log_enabled ]; then
 		log_message "Backup VM $1"
 	fi
+
+	returnval=0
 	
 	vm_label=`get_vm_label $1`
 	
@@ -294,36 +299,40 @@ function backup_vm
 		if [ $vm_log_enabled ]; then
 			log_message "remove_template failed: $remove_template_result"
 		fi
-		return 3
+		returnval=3
 	else
 		if [ $vm_log_enabled ]; then
 			log_message "remove_template succeeded: $remove_template_result"
 		fi
 	fi
 	
-	disable_ha_result=`disable_ha $snapshot`
+	if [ $returnval -eq 0 ]; then
+		disable_ha_result=`disable_ha $snapshot`
 	
-	if [ $? -ne 0 ]; then
-		if [ $vm_log_enabled ]; then
-			log_message "disable_ha failed: $disable_ha_result"
-		fi
-		return 4
-	else
-		if [ $vm_log_enabled ]; then
-			log_message "disable_ha succeeded: $disable_ha_result"
+		if [ $? -ne 0 ]; then
+			if [ $vm_log_enabled ]; then
+				log_message "disable_ha failed: $disable_ha_result"
+			fi
+			returnval=4
+		else
+			if [ $vm_log_enabled ]; then
+				log_message "disable_ha succeeded: $disable_ha_result"
+			fi
 		fi
 	fi
 	
-	export_vm_result=`export_vm $snapshot $export_name`
-	
-	if [ $? -ne 0 ]; then
-		if [ $vm_log_enabled ]; then
-			log_message "export_vm failed: $export_vm_result"
-		fi
-		return 5
-	else
-		if [ $vm_log_enabled ]; then
-			log_message "export_vm succeeded: $export_vm_result"
+	if [ $returnval -eq 0 ]; then
+		export_vm_result=`export_vm $snapshot $export_name`
+		
+		if [ $? -ne 0 ]; then
+			if [ $vm_log_enabled ]; then
+				log_message "export_vm failed: $export_vm_result"
+			fi
+			returnval=5
+		else
+			if [ $vm_log_enabled ]; then
+				log_message "export_vm succeeded: $export_vm_result"
+			fi
 		fi
 	fi
 	
@@ -340,7 +349,7 @@ function backup_vm
 		fi
 	fi
 	
-	return 0
+	return $returnval
 }
 
 
@@ -873,8 +882,8 @@ function delete_old_backup_files
 	if [ $vm_log_enabled ]; then
 		log_message "Deleting *$backup_ext and *.bak files from $backup_dir $file_age days old"
 	fi
-	find $backup_dir*$backup_ext -type f -mtime $file_age -delete
-	find $backup_dir*.bak -type f -mtime $file_age -delete
+	find $backup_dir*$backup_ext -type f -mtime +$file_age -delete
+	find $backup_dir*.bak -type f -mtime +$file_age -delete
 }
 
 
@@ -891,7 +900,6 @@ function begin_tmp_summary_msg
 	[[ ! -d $tmp_msg_dir ]] && mkdir -p $tmp_msg_dir 
 	[[ ! -d $tmp_msg_dir ]] && 1>&2 echo "ERROR! $tmp_msg_dir does not exist and cannot be created!" && exit 1
 	[[ -f $tmp_msg_file ]] && rm -f $tmp_msg_file
-	# cat $mail_header_file > $tmp_msg_file
 	echo "To: $email_recipients" > $tmp_msg_file
 	echo "From: $email_from_address" >> $tmp_msg_file
 	echo -n "Subject: $email_subject" >> $tmp_msg_file
